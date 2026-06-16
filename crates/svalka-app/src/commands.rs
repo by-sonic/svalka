@@ -8,14 +8,22 @@ use svalka_core::programs::{list_programs, Program};
 use svalka_core::quarantine::QuarantineEntry;
 use svalka_core::scanner::scan as core_scan;
 use svalka_core::uninstaller::{uninstall_queue, UninstallResult};
-use tauri::State;
+use tauri::{Emitter, State};
 
 /// Disambiguates quarantine ids created within the same second.
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
 #[tauri::command]
-pub fn scan(categories: Vec<CategoryId>) -> Vec<Category> {
-    core_scan(&categories)
+pub fn scan(window: tauri::Window, categories: Vec<CategoryId>) -> Vec<Category> {
+    let mut out = Vec::new();
+    for id in &categories {
+        let cats = core_scan(std::slice::from_ref(id));
+        for c in &cats {
+            let _ = window.emit("scan://progress", &c.label);
+        }
+        out.extend(cats);
+    }
+    out
 }
 
 #[tauri::command]

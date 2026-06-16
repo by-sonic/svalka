@@ -1,12 +1,18 @@
 <script lang="ts">
   import { api, type Category, type CategoryId } from "../ipc";
   import { humanBytes } from "../lib/format";
+  import { listen } from "@tauri-apps/api/event";
 
   const DEFAULT: CategoryId[] = ["SystemTemp", "BrowserCache", "DevCache"];
   let cats: Category[] = [];
   let selected = new Set<string>();
   let scanning = false;
   let status = "";
+
+  // Live per-category progress emitted by the Rust `scan` command.
+  listen<string>("scan://progress", (e) => {
+    status = `Сканирую: ${e.payload}`;
+  });
 
   async function scan() {
     scanning = true;
