@@ -15,6 +15,11 @@ pub struct Program {
     pub uninstall: Option<String>,
     pub quiet_uninstall: Option<String>,
     pub real_size: u64,
+    /// `true` when `real_size` comes from the registry's `EstimatedSize`
+    /// (no readable install folder to measure) rather than a real disk walk.
+    /// Most programs don't record an `InstallLocation`, so without this the
+    /// list showed "—" for the majority of entries.
+    pub estimated: bool,
     pub source: ProgramSource,
 }
 
@@ -32,6 +37,9 @@ pub fn read_programs_from(root: &winreg::RegKey) -> Vec<Program> {
             continue;
         }
         let install_location: Option<String> = k.get_value("InstallLocation").ok();
+        // EstimatedSize is a REG_DWORD in KB. It's the fallback when there's no
+        // measurable InstallLocation (the common case).
+        let est_kb: u32 = k.get_value("EstimatedSize").unwrap_or(0);
         out.push(Program {
             name: display,
             publisher: k.get_value("Publisher").ok(),
@@ -40,7 +48,8 @@ pub fn read_programs_from(root: &winreg::RegKey) -> Vec<Program> {
                 .map(PathBuf::from),
             uninstall: k.get_value("UninstallString").ok(),
             quiet_uninstall: k.get_value("QuietUninstallString").ok(),
-            real_size: 0,
+            real_size: u64::from(est_kb) * 1024,
+            estimated: est_kb > 0,
             source: ProgramSource::Registry,
         });
     }
@@ -80,10 +89,20 @@ pub fn list_programs() -> Vec<Program> {
         a.name.to_lowercase() == b.name.to_lowercase() && a.publisher == b.publisher
     });
 
-    // real size from InstallLocation (the whole point — not EstimatedSize)
+    // Prefer a real disk walk of InstallLocation; fall back to the registry's
+    // EstimatedSize (already set above) when there's nothing measurable.
+    //
+    // Sized serially on purpose: jwalk already parallelises each walk across
+    // the rayon pool, so wrapping this loop in `par_iter_mut` nests rayon
+    // inside rayon and corrupts concurrent walks (sizes came back as 0). The
+    // caller runs this off the UI thread, so a serial walk doesn't block.
     for p in &mut all {
         if let Some(loc) = &p.install_location {
-            p.real_size = crate::sizer::dir_size(loc);
+            let real = crate::sizer::dir_size(loc);
+            if real > 0 {
+                p.real_size = real;
+                p.estimated = false;
+            }
         }
     }
     all
@@ -111,6 +130,8 @@ mod tests {
         app.set_value("Publisher", &"Acme").unwrap();
         app.set_value("UninstallString", &r"C:\MyApp\uninstall.exe")
             .unwrap();
+        // EstimatedSize is a REG_DWORD in KB; 2048 KB => 2 MiB.
+        app.set_value("EstimatedSize", &2048u32).unwrap();
 
         let root = hkcu.open_subkey(base).unwrap();
         let progs = read_programs_from(&root);
@@ -123,5 +144,8 @@ mod tests {
             .expect("app present");
         assert_eq!(p.publisher.as_deref(), Some("Acme"));
         assert_eq!(p.uninstall.as_deref(), Some(r"C:\MyApp\uninstall.exe"));
+        // No InstallLocation -> size falls back to EstimatedSize, flagged.
+        assert_eq!(p.real_size, 2048 * 1024);
+        assert!(p.estimated);
     }
 }

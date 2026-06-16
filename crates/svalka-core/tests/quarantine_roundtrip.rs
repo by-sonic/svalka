@@ -22,7 +22,8 @@ fn file_roundtrip_restores_bytes_to_original_path() {
             std::slice::from_ref(&junk),
             false,
         )
-        .unwrap();
+        .unwrap()
+        .entry;
 
     assert!(!junk.exists(), "source should be moved out");
     assert_eq!(entry.total(), 14);

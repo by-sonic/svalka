@@ -1,9 +1,11 @@
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use svalka_core::quarantine::QuarantineStore;
 
 pub struct AppState {
-    pub quarantine: Mutex<QuarantineStore>,
+    /// `Arc` so an async command can clone a handle and move it into
+    /// `spawn_blocking` (a `State` borrow can't be held across `.await`).
+    pub quarantine: Arc<Mutex<QuarantineStore>>,
 }
 
 impl AppState {
@@ -12,7 +14,7 @@ impl AppState {
         let mut store = QuarantineStore::new(meta);
         // Auto-purge quarantine entries older than 30 days on launch.
         store.purge_older_than(30, now_unix());
-        Self { quarantine: Mutex::new(store) }
+        Self { quarantine: Arc::new(Mutex::new(store)) }
     }
 }
 

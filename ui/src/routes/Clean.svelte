@@ -1,32 +1,48 @@
 <script lang="ts">
   import { api, type Category, type CategoryId } from "../ipc";
   import { humanBytes } from "../lib/format";
+  import Icon from "../lib/Icon.svelte";
   import { listen } from "@tauri-apps/api/event";
   import { onDestroy } from "svelte";
+  import { fly, slide } from "svelte/transition";
+  import { tweened } from "svelte/motion";
+  import { cubicOut } from "svelte/easing";
 
   const DEFAULT: CategoryId[] = ["SystemTemp", "BrowserCache", "DevCache"];
   let cats: Category[] = [];
   let selected = new Set<string>();
   let scanning = false;
+  let cleaning = false;
+  let scanned = false;
+  let progressLabel = "";
   let status = "";
+  let statusKind: "ok" | "warn" | "" = "";
 
-  // Live per-category progress emitted by the Rust `scan` command. Keep the
-  // unlisten handle so the listener is removed when the tab unmounts.
   let unlisten: (() => void) | undefined;
   listen<string>("scan://progress", (e) => {
-    status = `Сканирую: ${e.payload}`;
+    progressLabel = e.payload;
   }).then((fn) => (unlisten = fn));
   onDestroy(() => unlisten?.());
 
+  const selT = tweened(0, { duration: 420, easing: cubicOut });
+  $: total = cats
+    .flatMap((c) => c.items)
+    .filter((i) => selected.has(i.path))
+    .reduce((s, i) => s + i.size, 0);
+  $: selT.set(total);
+
   async function scan() {
     scanning = true;
-    status = "Сканирую...";
+    status = "";
+    statusKind = "";
+    progressLabel = "";
     try {
       cats = await api.scan(DEFAULT);
       selected = new Set(cats.flatMap((c) => c.items.map((i) => i.path)));
-      status = "";
+      scanned = true;
     } catch (e) {
       status = `Ошибка сканирования: ${e}`;
+      statusKind = "warn";
     } finally {
       scanning = false;
     }
@@ -37,12 +53,6 @@
     selected = selected;
   }
 
-  $: total = cats
-    .flatMap((c) => c.items)
-    .filter((i) => selected.has(i.path))
-    .reduce((s, i) => s + i.size, 0);
-
-  // Volume root of an absolute Windows path: drive letter (C:\) or UNC share.
   function volumeRoot(p: string): string {
     if (p.startsWith("\\\\")) {
       const third = p.indexOf("\\", 2);
@@ -55,93 +65,188 @@
   async function clean() {
     const paths = [...selected];
     if (!paths.length) return;
-    status = "Отправляю в карантин...";
+    cleaning = true;
+    status = "";
+    statusKind = "";
     const byVol = new Map<string, string[]>();
     for (const p of paths) {
       const v = volumeRoot(p);
       byVol.set(v, [...(byVol.get(v) ?? []), p]);
     }
     let freed = 0;
+    let skipped = 0;
     const errors: string[] = [];
     for (const [v, ps] of byVol) {
       try {
         const r = await api.quarantineItems("Очистка", v, ps);
-        if (r.ok) freed += r.freed;
-        else errors.push(`${v} — ${r.message}`);
+        freed += r.freed;
+        skipped += r.skipped.length;
+        if (!r.ok) errors.push(`${v} — ${r.message}`);
       } catch (e) {
         errors.push(`${v} — ${e}`);
       }
     }
-    status = errors.length
-      ? `Освобождено ${humanBytes(freed)}, но были ошибки: ${errors.join("; ")}`
-      : `Освобождено ${humanBytes(freed)} — всё в карантине, можно вернуть`;
+    const parts = [`Освобождено ${humanBytes(freed)}`];
+    if (skipped) parts.push(`пропущено ${skipped} (заняты или недоступны)`);
+    if (errors.length) parts.push(`ошибки: ${errors.join("; ")}`);
+    else if (!skipped) parts[0] = `Освобождено ${humanBytes(freed)} — всё в карантине, можно вернуть`;
+    status = parts.join(" · ");
+    statusKind = errors.length ? "warn" : "ok";
+    cleaning = false;
     await scan();
   }
+
+  $: catSize = (c: Category) => c.items.reduce((s, i) => s + i.size, 0);
 </script>
 
 <header class="bar">
-  <strong>Очистка</strong>
-  <span class="muted">{cats.length ? `Выбрано ${humanBytes(total)}` : "Нажмите «Сканировать»"}</span>
+  <span class="hicon"><Icon name="clean" size={20} /></span>
+  <div>
+    <h2>Очистка</h2>
+    <div class="sub faint mono">
+      {#if scanning}сканирую…{:else if scanned}{cats.flatMap((c) => c.items).length} объектов найдено{:else}готов к сканированию{/if}
+    </div>
+  </div>
   <span class="grow"></span>
-  <button on:click={scan} disabled={scanning}>Сканировать</button>
-  <button on:click={clean} disabled={!selected.size}>Отправить в карантин</button>
+
+  {#if scanned && !scanning}
+    <div class="seltotal" transition:fly={{ y: -6, duration: 180 }}>
+      <span class="eyebrow">к очистке</span>
+      <span class="mono big">{humanBytes($selT)}</span>
+    </div>
+  {/if}
+
+  <button class="btn btn--ghost btn--sm" on:click={scan} disabled={scanning || cleaning}>
+    {#if scanning}<span class="spinner"></span>{:else}<Icon name="search" size={16} />{/if}
+    Сканировать
+  </button>
+  <button class="btn btn--accent" on:click={clean} disabled={!selected.size || scanning || cleaning}>
+    {#if cleaning}<span class="spinner"></span>{:else}<Icon name="clean" size={16} />{/if}
+    В карантин
+  </button>
 </header>
 
-{#if status}<p class="muted">{status}</p>{/if}
+{#if scanning || cleaning}
+  <div class="liveband" transition:slide={{ duration: 160 }}>
+    <div class="progress"></div>
+    <div class="livetext faint mono">
+      {#if cleaning}переношу в карантин…{:else if progressLabel}сканирую: {progressLabel}{:else}сканирую…{/if}
+    </div>
+  </div>
+{/if}
 
-{#each cats as c}
-  <section>
-    <h3>{c.label} <span class="muted">{humanBytes(c.items.reduce((s, i) => s + i.size, 0))}</span></h3>
-    {#each c.items as i}
-      <label class="row">
-        <input type="checkbox" checked={selected.has(i.path)} on:change={() => toggle(i.path)} />
-        <span class="path">{i.path}</span>
-        <span class="muted">{humanBytes(i.size)}</span>
-      </label>
-    {/each}
-  </section>
-{/each}
+{#if status}
+  <p class="status" class:warn={statusKind === "warn"} class:ok={statusKind === "ok"} transition:fly={{ y: -4, duration: 160 }}>
+    {#if statusKind === "ok"}<Icon name="check" size={15} />{:else if statusKind === "warn"}<Icon name="alert" size={15} />{/if}
+    <span>{status}</span>
+  </p>
+{/if}
+
+<div class="content">
+  {#if !scanned && !scanning}
+    <div class="empty">
+      <div class="ring"><Icon name="clean" size={28} /></div>
+      <div>Нажми «Сканировать», чтобы найти мусор</div>
+      <div class="faint" style="font-size:12.5px">Временные файлы, кэш браузеров и сборок</div>
+    </div>
+  {/if}
+
+  {#each cats as c, ci (c.id)}
+    {#if c.items.length}
+      <section in:fly={{ y: 10, duration: 240, delay: ci * 60 }}>
+        <div class="sechead">
+          <span class="chip chip--acc">{c.label}</span>
+          <span class="faint mono">{humanBytes(catSize(c))}</span>
+          <span class="faint">· {c.items.length}</span>
+        </div>
+        {#each c.items as i (i.path)}
+          <label class="listrow" class:is-selected={selected.has(i.path)}>
+            <input class="check" type="checkbox" checked={selected.has(i.path)} on:change={() => toggle(i.path)} />
+            <span class="path">{i.path}</span>
+            <span class="size mono">{humanBytes(i.size)}</span>
+          </label>
+        {/each}
+      </section>
+    {/if}
+  {/each}
+</div>
 
 <style>
-  .bar {
+  .hicon {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--acc);
+    flex: 0 0 auto;
+  }
+  .sub {
+    font-size: 12px;
+    margin-top: 2px;
+  }
+  .seltotal {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    line-height: 1.1;
+  }
+  .seltotal .big {
+    font-size: 17px;
+    color: var(--acc);
+  }
+  .liveband {
+    margin-top: 14px;
+  }
+  .livetext {
+    font-size: 12px;
+    margin-top: 8px;
+  }
+  .status {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 12px;
-  }
-  .grow {
-    flex: 1;
-  }
-  .muted {
-    color: #888;
+    gap: 9px;
     font-size: 13px;
+    border-radius: var(--r-sm);
+    padding: 10px 13px;
+    margin: 14px 0 0;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--text-dim);
   }
-  .row {
+  .status.ok {
+    color: var(--acc);
+    background: var(--acc-soft);
+    border-color: rgba(198, 242, 78, 0.3);
+  }
+  .status.warn {
+    color: var(--danger);
+    background: var(--danger-soft);
+    border-color: rgba(255, 111, 97, 0.35);
+  }
+  .content {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .sechead {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 6px 0;
-    border-bottom: 1px solid #80808022;
+    margin-bottom: 6px;
   }
   .path {
     flex: 1;
-    font-size: 13px;
+    min-width: 0;
+    font-size: 12.5px;
     word-break: break-all;
+    color: var(--text-dim);
   }
-  h3 {
-    font-size: 15px;
-    margin: 16px 0 6px;
-  }
-  button {
-    padding: 7px 14px;
-    border-radius: 8px;
-    border: 1px solid #3b82f6;
-    background: #3b82f6;
-    color: #fff;
-    cursor: pointer;
-  }
-  button:disabled {
-    opacity: 0.5;
-    cursor: default;
+  .size {
+    font-size: 12.5px;
+    white-space: nowrap;
   }
 </style>
