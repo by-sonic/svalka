@@ -27,14 +27,16 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
 
-      # Build the frontend explicitly with the correct path (../../ui from the
-      # Tauri crate). The app's own beforeBuildCommand is overridden to empty in
+      # Build the frontend explicitly (cwd = ui, so npm reads ui/package.json).
+      # The app's own beforeBuildCommand is overridden to empty in
       # tauri.ci.conf.json so the build step below does not run it again.
       - name: Install frontend deps
-        run: npm --prefix ui install
+        working-directory: ui
+        run: npm install
 
       - name: Build frontend
-        run: npm --prefix ui run build
+        working-directory: ui
+        run: npm run build
 
       - name: Build app and publish release
         uses: tauri-apps/tauri-action@v0
