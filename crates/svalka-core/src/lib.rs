@@ -8,3 +8,4 @@ pub mod regbackup;
 pub mod scanner;
 pub mod sizer;
 pub mod uninstaller;
+pub mod usage;
