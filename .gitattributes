@@ -1,0 +1,5 @@
+# Normalize all text files to LF in the repository to stop CRLF churn on Windows.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
