@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
-# svalka-app is added in Phase 8 once the Tauri crate is scaffolded.
-members = ["crates/svalka-core"]
+members = ["crates/svalka-core", "crates/svalka-app"]
 
 [workspace.package]
 edition = "2021"
