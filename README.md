@@ -20,8 +20,12 @@ them outright.
   (`System32`, `WinSxS`, browser `Cookies`/`Login Data`, `hiberfil.sys`, …) are
   dropped. Paths are canonicalized first, so 8.3 short-names and junctions can't
   sneak past the check.
-- **Atomic batches with rollback.** If any move (or the manifest write) in a
-  batch fails, everything already moved is rolled back — no half-cleaned state.
+- **Resilient batches, never orphaned.** Items are moved independently: a
+  locked / in-use file (an open browser holding its cache is the normal case)
+  is skipped and reported, never fatal — one bad item can't abort the whole
+  cleanup. The manifest is still written atomically: if recording the batch
+  fails, the moves are rolled back so nothing is ever left moved-but-unrecorded
+  (and therefore unrestorable).
 - **Restore never clobbers.** If something already occupies an original path,
   the restore aborts instead of overwriting.
 - **Auto-purge.** Quarantine entries older than 30 days are removed on launch.
@@ -37,20 +41,22 @@ Svalka/
   crates/
     svalka-core/   # all logic, headless, fully unit-tested (no Tauri imports)
     svalka-app/    # thin Tauri 2 wrapper: IPC commands + state over the core
-  ui/              # Svelte 5 + Vite frontend (four screens)
+  ui/              # Svelte 5 + Vite frontend (five screens)
 ```
 
 - **`svalka-core`** is a plain Rust library with no GUI dependency, so it
   compiles and tests on any host. Modules: `model`, `fsafe` (atomic move +
   same-volume + in-use detection), `sizer` (parallel sizing via `jwalk`),
+  `usage` (bounded disk-usage tree + largest files),
   `quarantine` (move / restore / purge + manifest), `regbackup` (reg.exe
   export/import), `scanner` (categories + deny-list), `programs` (installed
   programs across registry hives with real folder sizes), `uninstaller`,
   `leftovers`, `paths` (env-injected well-known roots).
 - **`svalka-app`** maps Tauri IPC commands/events onto the core and requests
   administrator rights at launch (needed to clean system folders).
-- **`ui`** renders four screens: **Очистка** (clean), **Программы** (programs),
-  **Карантин** (quarantine), **Настройки** (settings).
+- **`ui`** renders five screens: **Очистка** (clean), **Программы** (programs),
+  **Анализ диска** (disk usage treemap + largest files), **Карантин**
+  (quarantine), **Настройки** (settings).
 
 ## Prerequisites
 
@@ -65,6 +71,9 @@ Svalka/
 npm --prefix ui install
 
 # run the app in dev (starts Vite, opens the Tauri window; prompts for UAC)
+# NB: the app's manifest requests administrator rights, so launch this from an
+# elevated terminal — otherwise the UAC-elevated window can't talk back to the
+# dev tooling.
 cd crates/svalka-app
 ../../ui/node_modules/.bin/tauri dev
 ```
@@ -89,7 +98,7 @@ cd crates/svalka-app
 - **M1 — Core engine** (`cargo test -p svalka-core` green): a headless,
   fully-tested library that scans, sizes, quarantines, restores, and reads
   installed programs with real sizes.
-- **M2 — App + UI**: the Tauri app and the four Svelte screens wired to the core.
+- **M2 — App + UI**: the Tauri app and the five Svelte screens wired to the core.
 
 ## Known v1 limitations
 
