@@ -12,8 +12,13 @@ fn main() {
             commands::quarantine_items,
             commands::list_quarantine,
             commands::restore_entry,
+            commands::delete_entry,
+            commands::clear_quarantine,
             commands::uninstall_programs,
-            commands::find_leftovers_cmd
+            commands::find_leftovers_cmd,
+            commands::analyze_disk,
+            commands::list_drives,
+            commands::open_url
         ])
         .run(tauri::generate_context!())
         .expect("error running Svalka");
