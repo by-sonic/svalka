@@ -7,27 +7,40 @@
   let loading = false;
   let status = "";
 
+  // Stable identity: two programs can share a display name but differ by
+  // publisher, so key selection on both.
+  const key = (p: Program) => `${p.name}|${p.publisher ?? ""}`;
+
   async function load() {
     loading = true;
-    progs = await api.getPrograms();
-    progs.sort((a, b) => b.real_size - a.real_size);
-    loading = false;
+    try {
+      progs = await api.getPrograms();
+      progs.sort((a, b) => b.real_size - a.real_size);
+    } catch (e) {
+      status = `Не удалось получить список программ: ${e}`;
+    } finally {
+      loading = false;
+    }
   }
 
-  function toggle(name: string) {
-    selected.has(name) ? selected.delete(name) : selected.add(name);
+  function toggle(k: string) {
+    selected.has(k) ? selected.delete(k) : selected.add(k);
     selected = selected;
   }
 
   async function uninstall() {
-    const chosen = progs.filter((p) => selected.has(p.name));
+    const chosen = progs.filter((p) => selected.has(key(p)));
     if (!chosen.length) return;
     status = `Удаляю ${chosen.length}...`;
-    const results = await api.uninstallPrograms(chosen);
-    const failed = results.filter((r) => !r.ok);
-    status = failed.length
-      ? `Готово, но не удалось: ${failed.map((f) => `${f.program} (${f.message})`).join("; ")}`
-      : "Все выбранные удалены";
+    try {
+      const results = await api.uninstallPrograms(chosen);
+      const failed = results.filter((r) => !r.ok);
+      status = failed.length
+        ? `Готово, но не удалось: ${failed.map((f) => `${f.program} (${f.message})`).join("; ")}`
+        : "Все выбранные удалены";
+    } catch (e) {
+      status = `Ошибка удаления: ${e}`;
+    }
     selected = new Set();
     await load();
   }
@@ -47,7 +60,7 @@
 
 {#each progs as p}
   <label class="row">
-    <input type="checkbox" checked={selected.has(p.name)} on:change={() => toggle(p.name)} />
+    <input type="checkbox" checked={selected.has(key(p))} on:change={() => toggle(key(p))} />
     <span class="name">{p.name}<br /><span class="muted">{p.publisher ?? ""}</span></span>
     <span class="muted">{p.real_size ? humanBytes(p.real_size) : "—"}</span>
   </label>

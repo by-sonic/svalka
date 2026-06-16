@@ -34,13 +34,18 @@ export interface MovedFile {
   stored: string;
   size: number;
 }
+export interface RegBackup {
+  hive: string;
+  subkey: string;
+  reg_file: string;
+}
 export interface QuarantineEntry {
   id: string;
   created: number;
   source: string;
   store_dir: string;
   files: MovedFile[];
-  reg: unknown[];
+  reg: RegBackup[];
 }
 export interface Leftover {
   kind: "File" | "Dir";

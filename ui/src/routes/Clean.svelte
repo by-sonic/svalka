@@ -2,6 +2,7 @@
   import { api, type Category, type CategoryId } from "../ipc";
   import { humanBytes } from "../lib/format";
   import { listen } from "@tauri-apps/api/event";
+  import { onDestroy } from "svelte";
 
   const DEFAULT: CategoryId[] = ["SystemTemp", "BrowserCache", "DevCache"];
   let cats: Category[] = [];
@@ -9,18 +10,26 @@
   let scanning = false;
   let status = "";
 
-  // Live per-category progress emitted by the Rust `scan` command.
+  // Live per-category progress emitted by the Rust `scan` command. Keep the
+  // unlisten handle so the listener is removed when the tab unmounts.
+  let unlisten: (() => void) | undefined;
   listen<string>("scan://progress", (e) => {
     status = `Сканирую: ${e.payload}`;
-  });
+  }).then((fn) => (unlisten = fn));
+  onDestroy(() => unlisten?.());
 
   async function scan() {
     scanning = true;
     status = "Сканирую...";
-    cats = await api.scan(DEFAULT);
-    selected = new Set(cats.flatMap((c) => c.items.map((i) => i.path)));
-    scanning = false;
-    status = "";
+    try {
+      cats = await api.scan(DEFAULT);
+      selected = new Set(cats.flatMap((c) => c.items.map((i) => i.path)));
+      status = "";
+    } catch (e) {
+      status = `Ошибка сканирования: ${e}`;
+    } finally {
+      scanning = false;
+    }
   }
 
   function toggle(path: string) {
@@ -33,7 +42,13 @@
     .filter((i) => selected.has(i.path))
     .reduce((s, i) => s + i.size, 0);
 
+  // Volume root of an absolute Windows path: drive letter (C:\) or UNC share.
   function volumeRoot(p: string): string {
+    if (p.startsWith("\\\\")) {
+      const third = p.indexOf("\\", 2);
+      const fourth = third >= 0 ? p.indexOf("\\", third + 1) : -1;
+      return fourth >= 0 ? p.slice(0, fourth + 1) : p;
+    }
     return p.slice(0, 2) + "\\";
   }
 
@@ -47,11 +62,19 @@
       byVol.set(v, [...(byVol.get(v) ?? []), p]);
     }
     let freed = 0;
+    const errors: string[] = [];
     for (const [v, ps] of byVol) {
-      const r = await api.quarantineItems("Очистка", v, ps);
-      if (r.ok) freed += r.freed;
+      try {
+        const r = await api.quarantineItems("Очистка", v, ps);
+        if (r.ok) freed += r.freed;
+        else errors.push(`${v} — ${r.message}`);
+      } catch (e) {
+        errors.push(`${v} — ${e}`);
+      }
     }
-    status = `Освобождено ${humanBytes(freed)} — всё в карантине, можно вернуть`;
+    status = errors.length
+      ? `Освобождено ${humanBytes(freed)}, но были ошибки: ${errors.join("; ")}`
+      : `Освобождено ${humanBytes(freed)} — всё в карантине, можно вернуть`;
     await scan();
   }
 </script>
