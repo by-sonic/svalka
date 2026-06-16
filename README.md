@@ -83,7 +83,19 @@
 | **Настройки** | Параметры приложения |
 
 <!-- SCREENSHOTS-START -->
-<p align="center"><em>Скриншоты — скоро.</em></p>
+<p align="center">
+  <img src="docs/screenshots/programs.jpg" alt="Программы — реальный размер на диске" width="850"><br>
+  <sub><em>Программы — реальный размер на диске и пакетное удаление</em></sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/clean.jpg" alt="Очистка — поиск мусора" width="420">
+  &nbsp;
+  <img src="docs/screenshots/settings.jpg" alt="Настройки — обратимость" width="420">
+</p>
+<p align="center">
+  <sub><em>Очистка — поиск мусора по категориям &nbsp;·&nbsp; Настройки — обратимость и автоочистка карантина</em></sub>
+</p>
 <!-- SCREENSHOTS-END -->
 
 ---
