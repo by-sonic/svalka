@@ -1,0 +1,17 @@
+[package]
+name = "svalka-core"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+jwalk = "0.8"
+rayon = "1"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+
+[dev-dependencies]
+tempfile = "3"
+serial_test = "3"
