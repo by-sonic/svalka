@@ -1,10 +1,10 @@
+pub mod fsafe;
+pub mod leftovers;
 pub mod model;
 pub mod paths;
-pub mod fsafe;
-pub mod sizer;
-pub mod regbackup;
-pub mod quarantine;
-pub mod scanner;
 pub mod programs;
+pub mod quarantine;
+pub mod regbackup;
+pub mod scanner;
+pub mod sizer;
 pub mod uninstaller;
-pub mod leftovers;

@@ -14,7 +14,14 @@ fn file_roundtrip_restores_bytes_to_original_path() {
 
     let mut store = QuarantineStore::new(meta.path().to_path_buf());
     let entry = store
-        .quarantine_paths("test", "Очистка", 1000, vol.path(), &[junk.clone()], false)
+        .quarantine_paths(
+            "test",
+            "Очистка",
+            1000,
+            vol.path(),
+            std::slice::from_ref(&junk),
+            false,
+        )
         .unwrap();
 
     assert!(!junk.exists(), "source should be moved out");

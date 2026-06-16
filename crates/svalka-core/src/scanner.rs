@@ -20,7 +20,11 @@ const DENY: &[&str] = &[
 ];
 
 pub fn is_allowed(path: &Path) -> bool {
-    let p = path.to_string_lossy().to_lowercase();
+    // Canonicalize first so 8.3 short names and junctions/symlinks aimed at a
+    // protected location can't slip past the substring deny-list. Falls back to
+    // the literal path when canonicalization fails (e.g. the path is gone).
+    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let p = canonical.to_string_lossy().to_lowercase();
     !DENY.iter().any(|d| p.contains(d))
 }
 
@@ -35,10 +39,18 @@ pub fn scan_roots(groups: Vec<(CategoryId, &str, Vec<PathBuf>)>) -> Vec<Category
                 .filter(|p| p.exists() && is_allowed(p))
                 .map(|p| {
                     let size = dir_size(&p);
-                    CleanItem { kind: ItemKind::Dir, path: p, size }
+                    CleanItem {
+                        kind: ItemKind::Dir,
+                        path: p,
+                        size,
+                    }
                 })
                 .collect();
-            Category { id, label: label.to_string(), items }
+            Category {
+                id,
+                label: label.to_string(),
+                items,
+            }
         })
         .collect()
 }
@@ -49,9 +61,11 @@ pub fn scan(requested: &[CategoryId]) -> Vec<Category> {
     let mut groups: Vec<(CategoryId, &str, Vec<PathBuf>)> = Vec::new();
     for id in requested {
         match id {
-            CategoryId::SystemTemp => {
-                groups.push((*id, "Временные файлы Windows", paths::system_temp_roots(&env)))
-            }
+            CategoryId::SystemTemp => groups.push((
+                *id,
+                "Временные файлы Windows",
+                paths::system_temp_roots(&env),
+            )),
             CategoryId::BrowserCache => {
                 groups.push((*id, "Кэш браузеров", paths::browser_cache_roots(&env)))
             }
@@ -64,13 +78,16 @@ pub fn scan(requested: &[CategoryId]) -> Vec<Category> {
             CategoryId::CrashDumps => {
                 groups.push((*id, "Дампы падений", paths::crash_dump_roots(&env)))
             }
-            CategoryId::Wer => {
-                groups.push((*id, "Отчёты об ошибках", paths::wer_roots(&env)))
-            }
-            CategoryId::WindowsUpdate => {
-                groups.push((*id, "Остатки Windows Update", paths::windows_update_roots(&env)))
-            }
-            _ => {}
+            CategoryId::Wer => groups.push((*id, "Отчёты об ошибках", paths::wer_roots(&env))),
+            CategoryId::WindowsUpdate => groups.push((
+                *id,
+                "Остатки Windows Update",
+                paths::windows_update_roots(&env),
+            )),
+            // Корзина чистится через Shell API в приложении (M2), не по путям.
+            // Явная ветка вместо `_` — добавление новой категории вызовет
+            // ошибку компиляции, а не молчаливый пропуск.
+            CategoryId::RecycleBin => {}
         }
     }
     scan_roots(groups)
@@ -109,7 +126,11 @@ mod tests {
         fs::create_dir_all(&temp_root).unwrap();
         fs::write(temp_root.join("j.bin"), vec![0u8; 500]).unwrap();
 
-        let roots = vec![(CategoryId::SystemTemp, "Системный мусор", vec![temp_root.clone()])];
+        let roots = vec![(
+            CategoryId::SystemTemp,
+            "Системный мусор",
+            vec![temp_root.clone()],
+        )];
         let cats = scan_roots(roots);
 
         assert_eq!(cats.len(), 1);

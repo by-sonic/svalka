@@ -50,8 +50,16 @@ mod tests {
             id: CategoryId::SystemTemp,
             label: "Временные файлы".into(),
             items: vec![
-                CleanItem { kind: ItemKind::Dir, path: PathBuf::from("a"), size: 100 },
-                CleanItem { kind: ItemKind::File, path: PathBuf::from("b"), size: 50 },
+                CleanItem {
+                    kind: ItemKind::Dir,
+                    path: PathBuf::from("a"),
+                    size: 100,
+                },
+                CleanItem {
+                    kind: ItemKind::File,
+                    path: PathBuf::from("b"),
+                    size: 50,
+                },
             ],
         };
         assert_eq!(cat.total(), 150);

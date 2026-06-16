@@ -54,11 +54,17 @@ pub fn move_to(src: &Path, dst_dir: &Path, dry_run: bool) -> Result<PathBuf, FsE
         return Ok(dst);
     }
     if !same_volume(src, dst_dir) {
-        return Err(FsError::CrossVolume(src.to_path_buf(), dst_dir.to_path_buf()));
+        return Err(FsError::CrossVolume(
+            src.to_path_buf(),
+            dst_dir.to_path_buf(),
+        ));
     }
     match std::fs::rename(src, &dst) {
         Ok(()) => Ok(dst),
-        Err(e) if e.raw_os_error() == Some(32) => Err(FsError::InUse(src.to_path_buf())),
+        // 32 = ERROR_SHARING_VIOLATION, 33 = ERROR_LOCK_VIOLATION (file in use)
+        Err(e) if matches!(e.raw_os_error(), Some(32) | Some(33)) => {
+            Err(FsError::InUse(src.to_path_buf()))
+        }
         Err(e) => Err(FsError::Io(e)),
     }
 }

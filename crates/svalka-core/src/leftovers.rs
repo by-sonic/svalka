@@ -32,10 +32,16 @@ pub fn folder_matches(product: &str, publisher: Option<&str>, folder_name: &str)
 /// Scan each candidate root for immediate child folders that match the program.
 /// Roots are injected so this is testable; the live wrapper passes the real
 /// Program Files / AppData / ProgramData dirs.
-pub fn find_leftovers_in(roots: &[PathBuf], product: &str, publisher: Option<&str>) -> Vec<Leftover> {
+pub fn find_leftovers_in(
+    roots: &[PathBuf],
+    product: &str,
+    publisher: Option<&str>,
+) -> Vec<Leftover> {
     let mut out = Vec::new();
     for root in roots {
-        let Ok(entries) = std::fs::read_dir(root) else { continue };
+        let Ok(entries) = std::fs::read_dir(root) else {
+            continue;
+        };
         for e in entries.filter_map(Result::ok) {
             let path = e.path();
             if !path.is_dir() || !is_allowed(&path) {
@@ -58,7 +64,13 @@ pub fn find_leftovers_in(roots: &[PathBuf], product: &str, publisher: Option<&st
 pub fn find_leftovers(p: &crate::programs::Program) -> Vec<Leftover> {
     let env = crate::paths::live_env;
     let mut roots = Vec::new();
-    for key in ["ProgramFiles", "ProgramFiles(x86)", "ProgramData", "LOCALAPPDATA", "APPDATA"] {
+    for key in [
+        "ProgramFiles",
+        "ProgramFiles(x86)",
+        "ProgramData",
+        "LOCALAPPDATA",
+        "APPDATA",
+    ] {
         if let Some(v) = env(key) {
             roots.push(PathBuf::from(v));
         }

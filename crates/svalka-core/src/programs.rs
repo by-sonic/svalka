@@ -22,7 +22,9 @@ pub struct Program {
 pub fn read_programs_from(root: &winreg::RegKey) -> Vec<Program> {
     let mut out = Vec::new();
     for name in root.enum_keys().filter_map(Result::ok) {
-        let Ok(k) = root.open_subkey(&name) else { continue };
+        let Ok(k) = root.open_subkey(&name) else {
+            continue;
+        };
         let display: Option<String> = k.get_value("DisplayName").ok();
         let system: u32 = k.get_value("SystemComponent").unwrap_or(0);
         let Some(display) = display else { continue };
@@ -51,9 +53,18 @@ pub fn list_programs() -> Vec<Program> {
     use winreg::RegKey;
 
     let sources = [
-        (HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
-        (HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
-        (HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (
+            HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        ),
+        (
+            HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+        ),
+        (
+            HKEY_CURRENT_USER,
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        ),
     ];
 
     let mut all: Vec<Program> = Vec::new();
@@ -63,9 +74,11 @@ pub fn list_programs() -> Vec<Program> {
         }
     }
 
-    // dedupe by (name, publisher)
-    all.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    all.dedup_by(|a, b| a.name == b.name && a.publisher == b.publisher);
+    // dedupe by (name, publisher), case-insensitively to match the sort key
+    all.sort_by_key(|p| p.name.to_lowercase());
+    all.dedup_by(|a, b| {
+        a.name.to_lowercase() == b.name.to_lowercase() && a.publisher == b.publisher
+    });
 
     // real size from InstallLocation (the whole point — not EstimatedSize)
     for p in &mut all {
@@ -96,14 +109,18 @@ mod tests {
         let (app, _) = hkcu.create_subkey(format!(r"{base}\MyApp")).unwrap();
         app.set_value("DisplayName", &"My App").unwrap();
         app.set_value("Publisher", &"Acme").unwrap();
-        app.set_value("UninstallString", &r"C:\MyApp\uninstall.exe").unwrap();
+        app.set_value("UninstallString", &r"C:\MyApp\uninstall.exe")
+            .unwrap();
 
         let root = hkcu.open_subkey(base).unwrap();
         let progs = read_programs_from(&root);
 
         hkcu.delete_subkey_all(r"Software\SvalkaTest").unwrap();
 
-        let p = progs.iter().find(|p| p.name == "My App").expect("app present");
+        let p = progs
+            .iter()
+            .find(|p| p.name == "My App")
+            .expect("app present");
         assert_eq!(p.publisher.as_deref(), Some("Acme"));
         assert_eq!(p.uninstall.as_deref(), Some(r"C:\MyApp\uninstall.exe"));
     }
