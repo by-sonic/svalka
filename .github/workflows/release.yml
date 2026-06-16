@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      # Build the frontend explicitly with the correct path (../../ui from the
+      # Tauri crate). The app's own beforeBuildCommand is overridden to empty in
+      # tauri.ci.conf.json so the build step below does not run it again.
+      - name: Install frontend deps
+        run: npm --prefix ui install
+
+      - name: Build frontend
+        run: npm --prefix ui run build
+
+      - name: Build app and publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: crates/svalka-app
+          args: --config tauri.ci.conf.json
+          tagName: ${{ github.ref_name }}
+          releaseName: Svalka ${{ github.ref_name }}
+          releaseBody: |
+            Установщик Svalka для Windows (NSIS) — в ассетах ниже.
+            Запускайте от имени администратора.
+          releaseDraft: false
+          prerelease: false

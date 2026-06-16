@@ -1,117 +1,185 @@
-# Svalka
+<!-- ROSEVPN-BANNER-START -->
+<p align="center">
+  <a href="https://t.me/rosevpnru_bot">
+    <img alt="RoseVPN — быстрый VPN" src="https://img.shields.io/badge/%F0%9F%8C%B9%20RoseVPN-%D0%9F%D0%BE%D0%B4%D0%BA%D0%BB%D1%8E%D1%87%D0%B8%D1%82%D1%8C%D1%81%D1%8F%20%D0%B2%20Telegram-E63946?style=for-the-badge&logo=telegram&logoColor=white&labelColor=1a1a1a" height="40"/>
+  </a>
+</p>
+<p align="center">
+  <sub><b>Быстрый VPN с обходом YouTube, Discord, Instagram</b> · Бесплатный пробный период · Подключение за 30 секунд через бот <a href="https://t.me/rosevpnru_bot">@rosevpnru_bot</a></sub>
+</p>
 
-A safe, transparent Windows cleaner. Svalka scans real junk (system / browser /
-developer caches), uninstalls programs in batches while showing their **real**
-on-disk sizes, hunts uninstall leftovers — and makes **every deletion
-reversible** by moving things into a per-volume quarantine instead of deleting
-them outright.
+---
 
-> Svalka (Сва́лка) — "the dump". Nothing is destroyed; it just gets moved to the
-> dump, where you can fish it back out.
+<!-- ROSEVPN-BANNER-END -->
 
-## Why it's safe
+# Svalka — безопасный чистильщик Windows
 
-- **Nothing is deleted — it's quarantined.** Junk is moved (atomic, instant,
-  same-volume `rename`) into `<volume>\.svalka-quarantine\<id>\`, recorded in a
-  JSON manifest, and can be restored to its exact original path. Each file gets
-  its own indexed subfolder, so two items with the same name (e.g. Chrome's and
-  Edge's `Cache`) never collide.
-- **Hard deny-list.** Even if a scanner returns one, protected locations
-  (`System32`, `WinSxS`, browser `Cookies`/`Login Data`, `hiberfil.sys`, …) are
-  dropped. Paths are canonicalized first, so 8.3 short-names and junctions can't
-  sneak past the check.
-- **Resilient batches, never orphaned.** Items are moved independently: a
-  locked / in-use file (an open browser holding its cache is the normal case)
-  is skipped and reported, never fatal — one bad item can't abort the whole
-  cleanup. The manifest is still written atomically: if recording the batch
-  fails, the moves are rolled back so nothing is ever left moved-but-unrecorded
-  (and therefore unrestorable).
-- **Restore never clobbers.** If something already occupies an original path,
-  the restore aborts instead of overwriting.
-- **Auto-purge.** Quarantine entries older than 30 days are removed on launch.
-- **Registry safety.** Registry keys are exported to a `.reg` file (via the
-  fully-qualified `reg.exe`) before any change, and re-imported on restore.
-- **No silent failures.** Uninstall and quarantine outcomes carry messages;
-  failures are surfaced in the UI, never swallowed.
+<p align="center">
+  <strong>Чистит реальный мусор, удаляет программы и освобождает диск — но ничего не удаляет безвозвратно.</strong><br>
+  Всё перемещается в обратимый карантин, откуда восстанавливается одной кнопкой.
+</p>
 
-## Architecture
+<p align="center">
+  <a href="https://github.com/by-sonic/svalka/releases/latest"><img src="https://img.shields.io/github/v/release/by-sonic/svalka?style=for-the-badge&color=blue&label=version" alt="Version"></a>
+  <a href="https://github.com/by-sonic/svalka/releases/latest"><img src="https://img.shields.io/github/downloads/by-sonic/svalka/total?style=for-the-badge&color=green&label=downloads" alt="Downloads"></a>
+  <a href="https://github.com/by-sonic/svalka/blob/main/LICENSE"><img src="https://img.shields.io/github/license/by-sonic/svalka?style=for-the-badge&color=purple" alt="License"></a>
+  <img src="https://img.shields.io/badge/platform-Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Platform">
+  <img src="https://img.shields.io/badge/Rust%20%2B%20Tauri%202-000000?style=for-the-badge&logo=rust&logoColor=white" alt="Rust + Tauri">
+</p>
+
+---
+
+## Скачать
+
+| Платформа | Файл | Описание |
+|-----------|------|----------|
+| **Windows** 10 / 11 (x64) | [Svalka-setup.exe](https://github.com/by-sonic/svalka/releases/latest) | Установщик (NSIS) |
+
+> Перейдите в [Releases](https://github.com/by-sonic/svalka/releases/latest) и скачайте последнюю версию. Запускайте **от имени администратора** — без этого нельзя чистить системные папки.
+
+---
+
+## Что это?
+
+**Svalka** (Сва́лка — «свалка», «мусорка») — десктопное приложение для Windows, которое наводит порядок на диске, **не рискуя вашими данными**. Оно сканирует настоящий мусор (системный кэш, кэш браузеров, кэши разработчика), удаляет программы пачками, показывая их **реальный** размер на диске, ищет «хвосты» от деинсталляторов — и делает **каждое удаление обратимым**, перемещая файлы в карантин вместо безвозвратного стирания.
+
+> Нашёл лишнее → положил на свалку → передумал → достал обратно. Ничего не уничтожается.
+
+### Ключевые возможности
+
+- **Ничего не удаляется — всё в карантин.** Любой «удалённый» файл можно восстановить в точное исходное место.
+- **Реальные размеры.** Программы и папки показываются с фактическим размером на диске (параллельный обход через `jwalk`), а не с тем, что заявил установщик.
+- **Пакетное удаление программ** с поиском оставшегося мусора (leftovers).
+- **Анализ диска.** Treemap использования диска + список самых крупных файлов — видно, что именно «съело» место.
+- **Жёсткий дени-лист.** Защищённые расположения (`System32`, `WinSxS`, `Cookies`, `Login Data`, `hiberfil.sys` …) не тронет, даже если сканер их вернул.
+- **Без телеметрии.** Open-source, ничего не отправляет наружу. Весь код открыт для аудита.
+
+---
+
+## Почему это безопасно
+
+Это главная идея проекта. Обычные чистильщики удаляют файлы безвозвратно — и если они ошиблись, восстанавливать нечего. Svalka устроена иначе:
+
+- **Не удаление, а перемещение.** Мусор атомарно и мгновенно переносится (`rename` в пределах тома) в `<том>\.svalka-quarantine\<id>\`, фиксируется в JSON-манифесте и может быть восстановлен по исходному пути. У каждого файла свой индексированный подкаталог, поэтому два элемента с одинаковым именем (например, `Cache` Chrome и Edge) никогда не конфликтуют.
+- **Жёсткий дени-лист.** Даже если сканер вернул защищённый путь — он отбрасывается. Пути сначала канонизируются, поэтому короткие имена 8.3 и junction-и не проскользнут мимо проверки.
+- **Устойчивые пачки, без «осиротевших» файлов.** Элементы переносятся независимо: заблокированный / занятый файл (открытый браузер, держащий свой кэш — обычное дело) пропускается и попадает в отчёт, но не валит всю очистку. Манифест пишется атомарно: если записать пачку не удалось, перемещения откатываются — ничего не остаётся «перемещённым-но-незаписанным» (а значит невосстановимым).
+- **Восстановление не затирает.** Если исходный путь уже занят, восстановление прерывается, а не перезаписывает существующее.
+- **Автоочистка.** Записи карантина старше 30 дней удаляются при запуске.
+- **Безопасность реестра.** Ключи реестра экспортируются в `.reg` (через полный путь к `reg.exe`) до любого изменения и импортируются обратно при восстановлении.
+- **Никаких «тихих» ошибок.** Результаты удаления и карантина несут сообщения; сбои показываются в интерфейсе, а не проглатываются.
+
+---
+
+## Экраны
+
+Пять экранов — всё, что нужно для уборки, и ничего лишнего:
+
+| Экран | Назначение |
+|-------|------------|
+| **Очистка** | Сканирует мусор по категориям (система / браузеры / кэши разработчика) и отправляет в карантин |
+| **Программы** | Установленные программы с реальными размерами, пакетная деинсталляция + поиск хвостов |
+| **Анализ диска** | Treemap использования диска и список самых крупных файлов |
+| **Карантин** | Просмотр и восстановление перемещённого, ручная очистка |
+| **Настройки** | Параметры приложения |
+
+<!-- SCREENSHOTS-START -->
+<p align="center"><em>Скриншоты — скоро.</em></p>
+<!-- SCREENSHOTS-END -->
+
+---
+
+## Как это работает
 
 ```
 Svalka/
   crates/
-    svalka-core/   # all logic, headless, fully unit-tested (no Tauri imports)
-    svalka-app/    # thin Tauri 2 wrapper: IPC commands + state over the core
-  ui/              # Svelte 5 + Vite frontend (five screens)
+    svalka-core/   # вся логика, headless, полностью покрыта unit-тестами (без зависимостей от Tauri)
+    svalka-app/    # тонкая обёртка Tauri 2: IPC-команды и состояние поверх ядра
+  ui/              # фронтенд на Svelte 5 + Vite (пять экранов)
 ```
 
-- **`svalka-core`** is a plain Rust library with no GUI dependency, so it
-  compiles and tests on any host. Modules: `model`, `fsafe` (atomic move +
-  same-volume + in-use detection), `sizer` (parallel sizing via `jwalk`),
-  `usage` (bounded disk-usage tree + largest files),
-  `quarantine` (move / restore / purge + manifest), `regbackup` (reg.exe
-  export/import), `scanner` (categories + deny-list), `programs` (installed
-  programs across registry hives with real folder sizes), `uninstaller`,
-  `leftovers`, `paths` (env-injected well-known roots).
-- **`svalka-app`** maps Tauri IPC commands/events onto the core and requests
-  administrator rights at launch (needed to clean system folders).
-- **`ui`** renders five screens: **Очистка** (clean), **Программы** (programs),
-  **Анализ диска** (disk usage treemap + largest files), **Карантин**
-  (quarantine), **Настройки** (settings).
+- **`svalka-core`** — обычная Rust-библиотека без GUI-зависимостей, поэтому собирается и тестируется на любой машине. Модули: `model`, `fsafe` (атомарное перемещение + проверка одного тома + детект занятых файлов), `sizer` (параллельный подсчёт размеров через `jwalk`), `usage` (ограниченное дерево использования диска + крупнейшие файлы), `quarantine` (перемещение / восстановление / автоочистка + манифест), `regbackup` (экспорт/импорт через `reg.exe`), `scanner` (категории + дени-лист), `programs` (установленные программы из веток реестра с реальными размерами папок), `uninstaller`, `leftovers`, `paths` (известные корни, инжектируемые через окружение).
+- **`svalka-app`** связывает IPC-команды/события Tauri с ядром и запрашивает права администратора при старте (нужны для чистки системных папок).
+- **`ui`** рисует пять экранов на Svelte 5.
 
-## Prerequisites
+---
 
-- Rust (stable) + cargo
-- Node.js + npm
-- Windows (the cleaning logic and registry features are Windows-specific)
+## Установка
 
-## Develop
+1. Скачайте установщик из [Releases](https://github.com/by-sonic/svalka/releases/latest).
+2. Запустите **от имени администратора** (приложение само запросит UAC — права нужны для работы с системными папками и реестром).
+3. Откройте экран **Очистка**, просканируйте и отправьте мусор в карантин. Передумали — вкладка **Карантин**, кнопка «Восстановить».
+
+---
+
+## Разработка
+
+Требуется: **Rust** (stable) + cargo, **Node.js** + npm, **Windows** (логика очистки и работа с реестром — Windows-специфичны).
 
 ```sh
-# install frontend deps
+# зависимости фронтенда
 npm --prefix ui install
 
-# run the app in dev (starts Vite, opens the Tauri window; prompts for UAC)
-# NB: the app's manifest requests administrator rights, so launch this from an
-# elevated terminal — otherwise the UAC-elevated window can't talk back to the
-# dev tooling.
+# запуск в dev (поднимает Vite, открывает окно Tauri; запросит UAC).
+# приложение требует прав администратора — запускайте из терминала «от админа»,
+# либо используйте dev.cmd (он сам поднимает права).
 cd crates/svalka-app
 ../../ui/node_modules/.bin/tauri dev
 ```
 
-## Test
+### Тесты
 
 ```sh
-cargo test -p svalka-core        # core engine: unit + integration tests
-cargo clippy -p svalka-core --all-targets -- -D warnings
-npm --prefix ui run test         # frontend unit tests (vitest)
+cargo test -p svalka-core                                   # ядро: unit + интеграционные тесты
+cargo clippy -p svalka-core --all-targets -- -D warnings    # линт без предупреждений
+npm --prefix ui run test                                    # фронтенд (vitest)
 ```
 
-## Build a release installer
+### Сборка установщика
 
 ```sh
 cd crates/svalka-app
-../../ui/node_modules/.bin/tauri build   # produces an NSIS installer under target/release/bundle
+../../ui/node_modules/.bin/tauri build   # NSIS-установщик в target/release/bundle
 ```
 
-## Milestones
+> Релизные сборки выпускаются автоматически: пуш тега `v*` запускает GitHub Actions ([release.yml](.github/workflows/release.yml)), который собирает NSIS-установщик и прикладывает его к Release.
 
-- **M1 — Core engine** (`cargo test -p svalka-core` green): a headless,
-  fully-tested library that scans, sizes, quarantines, restores, and reads
-  installed programs with real sizes.
-- **M2 — App + UI**: the Tauri app and the five Svelte screens wired to the core.
+---
 
-## Known v1 limitations
+## Стек
 
-- **Settings → auto-purge days** is shown but not yet persisted; the launch
-  purge is hardcoded to 30 days. Wiring it up is a small follow-up
-  (`get_settings`/`set_settings` backed by `settings.json` in the app data dir).
-- **Recycle Bin** category is modeled but emptied via the Windows Shell API in a
-  later iteration, not via path scanning.
-- **Registry-key quarantine** is modeled end-to-end (`RegBackup`, export/import
-  on restore) but no screen quarantines a registry key yet — file leftovers are
-  covered; reg-key quarantine reuses the same machinery.
-- Icons are placeholder art.
+| Что | Зачем |
+|-----|-------|
+| **Rust** | Всё ядро — безопасность памяти и скорость для файловых операций |
+| **Tauri 2** | Лёгкая нативная обёртка вместо тяжёлого Electron |
+| **Svelte 5 + Vite** | Быстрый и компактный фронтенд |
+| **jwalk** | Параллельный обход файловой системы для подсчёта реальных размеров |
+| **GitHub Actions** | CI/CD — автоматическая сборка установщика при релизе |
 
-## License
+---
 
-Personal project — no license specified yet.
+## Известные ограничения v1
+
+- **Настройки → дни автоочистки** показываются, но пока не сохраняются; очистка при запуске зашита на 30 дней (небольшая доработка: `get_settings`/`set_settings` поверх `settings.json`).
+- **Корзина** смоделирована, но очищается через Windows Shell API в следующей итерации, а не сканированием путей.
+- **Карантин ключей реестра** реализован сквозняком (`RegBackup`, экспорт/импорт при восстановлении), но пока ни один экран не отправляет в карантин ключ реестра — файловые хвосты покрыты, карантин реестра переиспользует ту же механику.
+- Иконки — временные.
+
+---
+
+## Лицензия
+
+[MIT](LICENSE) — свободное использование, модификация и распространение.
+
+---
+
+<p align="center">
+  <strong>by sonic</strong><br>
+  <sub>Если проект помог — поставь ⭐️</sub>
+</p>
+
+---
+
+### Ключевые слова / Keywords
+
+> чистильщик windows, очистка диска windows, удаление мусора windows, безопасный чистильщик, обратимая очистка, аналог ccleaner, ccleaner альтернатива open source, очистка кэша браузера, удаление программ windows, деинсталлятор с хвостами, анализ диска treemap, какие файлы занимают место на диске, освободить место на диске, очистка системного диска c, windows cleaner, disk cleanup, safe reversible cleaner, open source ccleaner alternative, disk usage analyzer, junk cleaner, uninstaller leftovers, rust tauri desktop app
